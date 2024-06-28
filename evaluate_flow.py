@@ -5,15 +5,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from dataloader.flow.datasets import FlyingChairs, FlyingThings3D, MpiSintel, KITTI
-from utils import frame_utils
-from utils.flow_viz import save_vis_flow_tofile, flow_to_image
+from gmflow.dataloader.flow.datasets import FlyingChairs, FlyingThings3D, MpiSintel, KITTI
+from gmflow.utils import frame_utils
+from gmflow.utils.flow_viz import save_vis_flow_tofile, flow_to_image
 import imageio
 
-from utils.utils import InputPadder, compute_out_of_boundary_mask
+from gmflow.utils.utils import InputPadder, compute_out_of_boundary_mask
 from glob import glob
-from unimatch.geometry import forward_backward_consistency_check
-from utils.file_io import extract_video
+from gmflow.unimatch.geometry import forward_backward_consistency_check
+from gmflow.utils.file_io import extract_video
 
 
 @torch.no_grad()
@@ -678,10 +678,10 @@ def inference_flow(model,
         filenames, fps = extract_video(inference_video)  # list of [H, W, 3]
     else:
         filenames = sorted(glob(inference_dir + '/*.png') + glob(inference_dir + '/*.jpg'))
-    print('%d images found' % len(filenames))
 
     vis_flow_preds = []
     ori_imgs = []
+    flow_values = []
 
     for test_id in range(0, len(filenames) - 1):
         if (test_id + 1) % 50 == 0:
@@ -758,17 +758,13 @@ def inference_flow(model,
             flow_pr = torch.transpose(flow_pr, -2, -1)
 
         flow = flow_pr[0].permute(1, 2, 0).cpu().numpy()  # [H, W, 2]
+        flow_values.append(flow)
+        vis_flow_preds.append(flow_to_image(flow))
 
         if inference_video is not None:
             output_file = os.path.join(output_path, '%04d_flow.png' % test_id)
         else:
             output_file = os.path.join(output_path, os.path.basename(filenames[test_id])[:-4] + '_flow.png')
-
-        if inference_video is not None and save_video:
-            vis_flow_preds.append(flow_to_image(flow))
-        else:
-            # save vis flow
-            save_vis_flow_tofile(flow, output_file)
 
         # also predict backward flow
         if pred_bidir_flow:
@@ -828,4 +824,4 @@ def inference_flow(model,
 
         imageio.mimwrite(output_file, results, fps=fps, quality=8)
 
-    print('Done!')
+    return flow_values, vis_flow_preds
